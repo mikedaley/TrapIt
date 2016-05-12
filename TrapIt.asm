@@ -48,6 +48,12 @@ SCRN_LEFT_CELL          equ             0
 SCRN_RIGHT_CELL         equ             32
 
 MAX_FREEZE_COUNT        equ             576             ; 75% of 768 screen cells
+
+WALL_HORIZONTAL         equ             0
+WALL_VERTICAL           equ             1
+
+WALL_HORIZONTAL_COLOUR  equ             RED * PAPER + WHITE + FLASH
+WALL_VERTICAL_COLOUR    equ             GREEN * PAPER + WHITE + FLASH
 ; ----------------------------------------------------------------------------------------------------------------------------------------------------------
 
                 org     32768
@@ -64,28 +70,94 @@ start
                 ld      (hl), a
                 ldir
 
-                ld      de, 0x050c
-                call    getAttrAddr
-                push    hl
-                pop     de
-                inc     de
-                ld      a, FREEZE_COLOUR
-                ld      (hl), a 
-                ld      bc, 25
-                ldir
+;                 ld      de, 0x050c
+;                 call    getAttrAddr
+;                 push    hl
+;                 pop     de
+;                 inc     de
+;                 ld      a, FREEZE_COLOUR
+;                 ld      (hl), a 
+;                 ld      bc, 15
+;                 ldir
 
-                ld      de, 0x0314
-                call    getAttrAddr
-                push    hl
-                pop     de
-                inc     de
-                ld      a, FREEZE_COLOUR
-                ld      (hl), a 
-                ld      bc, 10
-                ldir
+;                 ld      de, 0x1214
+;                 call    getAttrAddr
+;                 push    hl
+;                 pop     de
+;                 inc     de
+;                 ld      a, FREEZE_COLOUR
+;                 ld      (hl), a 
+;                 ld      bc, 5
+;                 ldir
 
+;                 ld      de, 0x0306
+;                 call    getAttrAddr
+;                 push    hl
+;                 pop     de
+;                 inc     de
+;                 ld      a, FREEZE_COLOUR
+;                 ld      (hl), a 
+;                 ld      bc, 10
+;                 ldir
 
 mainLoop
+                ; Read keyboard. i = switch axis, p = move left, p = move right
+                ld      a, (wallXpos)
+                ld      d, a
+                ld      a, (wallYpos)
+                ld      e, a
+
+                ld      bc, 0xdffe                  ; B = 0xDF (YoUIOP), C = port 0xFE
+                in      a, (c)         
+                rra                    
+                jp      nc, _moveRight  
+                rra                    
+                jp      nc, _moveLeft
+                rra
+                jp      nc, _switchAxis
+
+                ld      bc, 0xfbfe                  ; B = 0xDF (YoUIOP), C = port 0xFE
+                in      a, (c)         
+                rra
+                jp      nc, _moveUp
+
+                ld      bc, 0xfdfe                  ; B = 0xDF (YoUIOP), C = port 0xFE
+                in      a, (c)         
+                rra
+                jp      nc, _moveDown
+
+
+                jp      _moveBall
+
+_moveRight
+                inc     d
+                ld      a, d
+                ld      (wallXpos), a
+                jp      _moveBall
+_moveLeft
+                dec     d
+                ld      a, d
+                ld      (wallXpos), a
+                jp      _moveBall
+_moveUp
+                dec     e
+                ld      a, e
+                ld      (wallYpos), a
+                jp      _moveBall
+_moveDown
+                inc     e
+                ld      a, e
+                ld      (wallYpos), a
+                jp      _moveBall                
+_switchAxis
+                ld      a, (wallDir)
+                xor     a
+                ld      (wallDir), a
+
+_saveOldScreenColour
+
+
+_moveBall
                 ; Move ball
                 ld      a, (ballYPos)
                 ld      b, a
@@ -93,12 +165,12 @@ mainLoop
                 add     a, b
                 ld      (ballYPos), a
 
-                cp      SCRN_TOP_CELL                   ; Check for hitting screen edges
+                cp      SCRN_TOP_CELL                   ; Check for hitting top/bottom screen edges
                 jp      c, _bounceY
                 cp      SCRN_BOTTOM_CELL
                 jp      nc, _bounceY
 
-                ld      c, a
+                ld      c, a                            ; Check hitting frozen screen
                 ld      a, (ballXPos)
                 ld      b, a
                 ld      a, (xDir)
@@ -126,12 +198,12 @@ _checkXPos
                 add     a, b
                 ld      (ballXPos), a
 
-                cp      SCRN_LEFT_CELL
+                cp      SCRN_LEFT_CELL                  ; Check hitting left/right screen edges
                 jp      c, _bounceX
                 cp      SCRN_RIGHT_CELL
                 jp      nc, _bounceX
 
-                ld      de, (ballYPos)                  ; Check for hitting frozen screen
+                ld      de, (ballYPos)                  ; Check hitting frozen screen
                 call    getAttrAddr
                 ld      a, (hl)
                 cp      FREEZE_COLOUR
@@ -146,20 +218,48 @@ _bounceX
                 add     a, b
                 ld      (ballXPos), a
 
-
 _drawBall       ; Draw ball
                 ld      de, (ballYPos)
                 call    getAttrAddr
                 ld      (hl), BALL_COLOUR
 
-                ; Screen sync
-                halt
+                ; Draw controller
+                ld      a, (wallDir)
+                cp      WALL_HORIZONTAL
+                jp      nz, _verticalWall
+                ld      b, WALL_HORIZONTAL_COLOUR
+                jp      _drawControl
+_verticalWall
+                ld      b, WALL_VERTICAL_COLOUR
+
+_drawControl
+                ld      de, (wallYpos)
+                push    bc
+                call    getAttrAddr
+                pop     bc
+                ld      a, (hl)
+                jp      nz, _saveScreen
+                ld      a, SCRN_COLOUR
+_saveScreen
+                ld      (oldScreen), a
+                ld      a, b
+                ld      (hl), a
+
                 halt
                 halt
                 halt
 
                 ; Erase ball
+                ld      de, (ballYPos)
+                call    getAttrAddr
                 ld      (hl), SCRN_COLOUR
+
+                ; Erase control
+                ld      de, (wallYpos)
+                call    getAttrAddr
+                ld      a, (oldScreen)
+                ld      (hl), a
+
 
                 jp      mainLoop                        ; Loop
 
@@ -201,8 +301,9 @@ ballXPos        db      16
 yDir            db      1         
 xDir            db      1
 wallDir         db      0                           ; 0 = Horizontal, 1 = Vertical
-wallYpos        db      0
-wallXpos        db      0
+wallYpos        db      12
+wallXpos        db      16
+oldScreen       db      0
 
 
                 END start
