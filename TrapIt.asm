@@ -42,10 +42,10 @@ BALL_COLOUR             equ             BLUE * PAPER + BRIGHT
 SCRN_COLOUR             equ             BLACK * PAPER + WHITE
 FREEZE_COLOUR           equ             GREEN * PAPER + BLACK
 
-SCRN_TOP_CELL           equ             1
-SCRN_BOTTOM_CELL        equ             23
-SCRN_LEFT_CELL          equ             1
-SCRN_RIGHT_CELL         equ             31
+SCRN_TOP_CELL           equ             0
+SCRN_BOTTOM_CELL        equ             24
+SCRN_LEFT_CELL          equ             0
+SCRN_RIGHT_CELL         equ             32
 
 MAX_FREEZE_COUNT        equ             576             ; 75% of 768 screen cells
 ; ----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -53,9 +53,6 @@ MAX_FREEZE_COUNT        equ             576             ; 75% of 768 screen cell
                 org     32768
 
 start
-                ld      a, MAGENTA                      ; Set the border to black
-                out     (254), a
-
                 ld      hl, BITMAP_SCRN_ADDR            ; Clear the screen file
                 ld      de, BITMAP_SCRN_ADDR + 1
                 ld      bc, BITMAP_SCRN_SIZE
@@ -77,6 +74,17 @@ start
                 ld      bc, 25
                 ldir
 
+                ld      de, 0x0314
+                call    getAttrAddr
+                push    hl
+                pop     de
+                inc     de
+                ld      a, FREEZE_COLOUR
+                ld      (hl), a 
+                ld      bc, 10
+                ldir
+
+
 mainLoop
                 ; Move ball
                 ld      a, (ballYPos)
@@ -85,15 +93,31 @@ mainLoop
                 add     a, b
                 ld      (ballYPos), a
 
-                cp      SCRN_TOP_CELL
+                cp      SCRN_TOP_CELL                   ; Check for hitting screen edges
                 jp      c, _bounceY
                 cp      SCRN_BOTTOM_CELL
                 jp      nc, _bounceY
-                jp      nz, _checkXPos      
+
+                ld      c, a
+                ld      a, (ballXPos)
+                ld      b, a
+                ld      a, (xDir)
+                add     a, b
+                ld      de, (ballYPos)   
+                ld      d, a
+                call    getAttrAddr
+                ld      a, (hl)
+                cp      FREEZE_COLOUR
+                jp      nz, _checkXPos
+
 _bounceY
                 ld      a, (yDir)
                 neg
                 ld      (yDir), a
+                ld      b, a
+                ld      a, (ballYPos)
+                add     a, b
+                ld      (ballYPos), a
 
 _checkXPos
                 ld      a, (ballXPos)
@@ -106,11 +130,21 @@ _checkXPos
                 jp      c, _bounceX
                 cp      SCRN_RIGHT_CELL
                 jp      nc, _bounceX
+
+                ld      de, (ballYPos)                  ; Check for hitting frozen screen
+                call    getAttrAddr
+                ld      a, (hl)
+                cp      FREEZE_COLOUR
+
                 jp      nz, _drawBall      
 _bounceX
                 ld      a, (xDir)
                 neg
                 ld      (xDir), a
+                ld      b, a
+                ld      a, (ballXPos)
+                add     a, b
+                ld      (ballXPos), a
 
 
 _drawBall       ; Draw ball
@@ -166,6 +200,9 @@ ballYPos        db      12
 ballXPos        db      16 
 yDir            db      1         
 xDir            db      1
+wallDir         db      0                           ; 0 = Horizontal, 1 = Vertical
+wallYpos        db      0
+wallXpos        db      0
 
 
                 END start
