@@ -11,7 +11,7 @@
 ; To win the game you need to either freeze 75%+ of the playing area, or trap
 ; the ball in a frozen area.
 ;
-; This is an entry for the 256byte game challenge on the Z80 Assembly programming
+; This is an entry for the 256 byte game challenge on the Z80 Assembly programming
 ; on the ZX Spectrum Facebook Group https://www.facebook.com/groups/z80asm/
 ; -----------------------------------------------------------------------------
 
@@ -58,12 +58,7 @@ SCRN_RIGHT_CELL         equ             0x20
 UP_CELL                 equ             0xffe0
 DOWN_CELL               equ             0x20
 LEFT_CELL               equ             0xffff
-RIGHT_CELL              equ             0x01
-
-; Store variables in the print buffer which is automatically initialised when the computer starts
-X_VECTOR                equ             0x5b00           
-Y_VECTOR                equ             0x5b02
-BALL_POS_ADDR           equ             0x5b04
+RIGHT_CELL              equ             0x01               
 
 ; -----------------------------------------------------------------------------
 ; MAIN CODE
@@ -88,7 +83,7 @@ start
                 ld      (hl), BORDER_COLOUR
                 ldir
 
-                ld      b, 23
+                ld      b, 23                                       ; Draw side borders
                 ld      hl, ATTR_SIDE_BORDER_ADDR
                 ld      de, 0x1f
 drawSides   
@@ -98,28 +93,31 @@ drawSides
                 add     hl, de
                 djnz    drawSides
 
-                ld      de, ATTR_SCRN_ADDR + (12 * 32) + 16
-                ld      (BALL_POS_ADDR), de
+mainLoop                                                            ; Main game loop
+                
+                ld      hl, (ballAddr)
+                ld      de, (xVector)
+                add     hl, de
+                ld      a, BORDER_COLOUR
+                cp      (hl)
+                jp      nz, _updateXVector
+                
 
-mainLoop
-;                 ld      hl, (BALL_POS_ADDR)
-;                 ld      de, (xVector)
-;                 add     hl, de
-;                 ld      de, (yVector)
-;                 add     hl, de
-;                 ld      (BALL_POS_ADDR), hl
+_updateXVector
+                ld      (ballAddr), hl
 
-                ld      hl, (BALL_POS_ADDR)
+                ld      hl, (ballAddr)
                 ld      (hl), BALL_COLOUR
 
                 halt 
 
-                ld      hl, (BALL_POS_ADDR)
+                ld      hl, (ballAddr)
                 ld      (hl), SCRN_COLOUR
 
                 jp      mainLoop                                    ; Loop
 
-xVector         dw      RIGHT_CELL
+ballAddr        dw      ATTR_SCRN_ADDR + (12 * 32) + 16
+xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
 
                 END start
