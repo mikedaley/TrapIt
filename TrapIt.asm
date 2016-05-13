@@ -1,4 +1,4 @@
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
+; -----------------------------------------------------------------------------
 ; TRAPIT - Mike Daley
 ;
 ; Started:  12th May 2016
@@ -13,297 +13,113 @@
 ;
 ; This is an entry for the 256byte game challenge on the Z80 Assembly programming
 ; on the ZX Spectrum Facebook Group https://www.facebook.com/groups/z80asm/
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
+; -----------------------------------------------------------------------------
 
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
+; -----------------------------------------------------------------------------
 ; CONSTANTS
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
+; -----------------------------------------------------------------------------
+BITMAP_SCRN_ADDR        equ             0x4000
+BITMAP_SCRN_SIZE        equ             0x1800
+ATTR_SCRN_ADDR          equ             0x5800
+ATTR_SCRN_SIZE          equ             0x300
+ATTR_ROW_SIZE           equ             0x1f
 
-BITMAP_SCRN_ADDR        equ             16384
-BITMAP_SCRN_SIZE        equ             6144
-ATTR_SCRN_ADDR          equ             22528
-ATTR_SCRN_SIZE          equ             768
-COLUMNS                 equ             32
-ROWS                    equ             24
+ATTR_PLAY_ZONE_START    equ             0x5821
+ATTR_PLAY_ZONE_ROWS     equ             0x17
 
-BLACK                   equ             0
-BLUE                    equ             1
-RED                     equ             2
-MAGENTA                 equ             3
-GREEN                   equ             4
-CYAN                    equ             5
-YELLOW                  equ             6
-WHITE                   equ             7
-PAPER                   equ             8               ; Multiply with inks to get paper colour
-BRIGHT                  equ             64
-FLASH                   equ             128             ; e.g. ATTR = BLACK * PAPER + CYAN + BRIGHT
+ATTR_ROW_24_ADDR        equ             0x5ae0
+ATTR_SIDE_BORDER_ADDR   equ             0x583f
 
-BALL_COLOUR             equ             BLUE * PAPER + BRIGHT
-SCRN_COLOUR             equ             BLACK * PAPER + WHITE
-FREEZE_COLOUR           equ             GREEN * PAPER + BLACK
+COLUMNS                 equ             0x20
+ROWS                    equ             0x18
 
-SCRN_TOP_CELL           equ             0
-SCRN_BOTTOM_CELL        equ             24
-SCRN_LEFT_CELL          equ             0
-SCRN_RIGHT_CELL         equ             32
+BLACK                   equ             0x00
+BLUE                    equ             0x01
+RED                     equ             0x02
+MAGENTA                 equ             0x03
+GREEN                   equ             0x04
+CYAN                    equ             0x05
+YELLOW                  equ             0x06
+WHITE                   equ             0x07
+PAPER                   equ             0x08                        ; Multiply with inks to get paper colour
+BRIGHT                  equ             0x40
+FLASH                   equ             0x80                        ; e.g. ATTR = BLACK * PAPER + CYAN + BRIGHT
 
-MAX_FREEZE_COUNT        equ             576             ; 75% of 768 screen cells
+BAT_COLOUR              equ             BLUE * PAPER + BRIGHT
+BALL_COLOUR             equ             RED * PAPER + WHITE
+SCRN_COLOUR             equ             WHITE * PAPER + BLACK
+BORDER_COLOUR           equ             BLACK * PAPER + BRIGHT
 
-WALL_HORIZONTAL         equ             0
-WALL_VERTICAL           equ             1
+SCRN_TOP_CELL           equ             0x00
+SCRN_BOTTOM_CELL        equ             0x18
+SCRN_LEFT_CELL          equ             0x00
+SCRN_RIGHT_CELL         equ             0x20
 
-WALL_HORIZONTAL_COLOUR  equ             RED * PAPER + WHITE + FLASH
-WALL_VERTICAL_COLOUR    equ             GREEN * PAPER + WHITE + FLASH
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
+UP_CELL                 equ             0xffe0
+DOWN_CELL               equ             0x20
+LEFT_CELL               equ             0xffff
+RIGHT_CELL              equ             0x01
 
-                org     32768
+; Store variables in the print buffer which is automatically initialised when the computer starts
+X_VECTOR                equ             0x5b00           
+Y_VECTOR                equ             0x5b02
+BALL_POS_ADDR           equ             0x5b04
+
+; -----------------------------------------------------------------------------
+; MAIN CODE
+; -----------------------------------------------------------------------------
+
+                org     0x8000
 
 start
-                ld      hl, BITMAP_SCRN_ADDR            ; Clear the screen file
+                ld      hl, BITMAP_SCRN_ADDR                        ; Clear the screen file & Attributes
                 ld      de, BITMAP_SCRN_ADDR + 1
-                ld      bc, BITMAP_SCRN_SIZE
-                ld      a, 0
-                ld      (hl), a
-                ldir
-                ld      bc, ATTR_SCRN_SIZE              ; Set the initial attribute values
-                ld      a, SCRN_COLOUR
-                ld      (hl), a
+                ld      bc, BITMAP_SCRN_SIZE                        ; Bitmap screen size + attributes size
+                ld      (hl), l                                     ; L = 0 so use that to clear
                 ldir
 
-;                 ld      de, 0x050c
-;                 call    getAttrAddr
-;                 push    hl
-;                 pop     de
-;                 inc     de
-;                 ld      a, FREEZE_COLOUR
-;                 ld      (hl), a 
-;                 ld      bc, 15
-;                 ldir
+                ld      (hl), BORDER_COLOUR                         ; Draw the top border using bright black background
+                ld      bc, ATTR_ROW_SIZE + 1
+                ldir
 
-;                 ld      de, 0x1214
-;                 call    getAttrAddr
-;                 push    hl
-;                 pop     de
-;                 inc     de
-;                 ld      a, FREEZE_COLOUR
-;                 ld      (hl), a 
-;                 ld      bc, 5
-;                 ldir
+                ld      hl, ATTR_ROW_24_ADDR                        ; Draw bottom border
+                ld      de, ATTR_ROW_24_ADDR + 1                
+                ld      bc, ATTR_ROW_SIZE
+                ld      (hl), BORDER_COLOUR
+                ldir
 
-;                 ld      de, 0x0306
-;                 call    getAttrAddr
-;                 push    hl
-;                 pop     de
-;                 inc     de
-;                 ld      a, FREEZE_COLOUR
-;                 ld      (hl), a 
-;                 ld      bc, 10
-;                 ldir
+                ld      b, 23
+                ld      hl, ATTR_SIDE_BORDER_ADDR
+                ld      de, 0x1f
+drawSides   
+                ld      (hl), BORDER_COLOUR
+                inc     hl
+                ld      (hl), BORDER_COLOUR
+                add     hl, de
+                djnz    drawSides
+
+                ld      de, ATTR_SCRN_ADDR + (12 * 32) + 16
+                ld      (BALL_POS_ADDR), de
 
 mainLoop
-                ; Read keyboard. i = switch axis, p = move left, p = move right
-                ld      a, (wallXpos)
-                ld      d, a
-                ld      a, (wallYpos)
-                ld      e, a
+;                 ld      hl, (BALL_POS_ADDR)
+;                 ld      de, (xVector)
+;                 add     hl, de
+;                 ld      de, (yVector)
+;                 add     hl, de
+;                 ld      (BALL_POS_ADDR), hl
 
-                ld      bc, 0xdffe                  ; B = 0xDF (YoUIOP), C = port 0xFE
-                in      a, (c)         
-                rra                    
-                jp      nc, _moveRight  
-                rra                    
-                jp      nc, _moveLeft
-                rra
-                jp      nc, _switchAxis
-
-                ld      bc, 0xfbfe                  ; B = 0xDF (YoUIOP), C = port 0xFE
-                in      a, (c)         
-                rra
-                jp      nc, _moveUp
-
-                ld      bc, 0xfdfe                  ; B = 0xDF (YoUIOP), C = port 0xFE
-                in      a, (c)         
-                rra
-                jp      nc, _moveDown
-
-
-                jp      _moveBall
-
-_moveRight
-                inc     d
-                ld      a, d
-                ld      (wallXpos), a
-                jp      _moveBall
-_moveLeft
-                dec     d
-                ld      a, d
-                ld      (wallXpos), a
-                jp      _moveBall
-_moveUp
-                dec     e
-                ld      a, e
-                ld      (wallYpos), a
-                jp      _moveBall
-_moveDown
-                inc     e
-                ld      a, e
-                ld      (wallYpos), a
-                jp      _moveBall                
-_switchAxis
-                ld      a, (wallDir)
-                xor     a
-                ld      (wallDir), a
-
-_saveOldScreenColour
-
-
-_moveBall
-                ; Move ball
-                ld      a, (ballYPos)
-                ld      b, a
-                ld      a, (yDir)
-                add     a, b
-                ld      (ballYPos), a
-
-                cp      SCRN_TOP_CELL                   ; Check for hitting top/bottom screen edges
-                jp      c, _bounceY
-                cp      SCRN_BOTTOM_CELL
-                jp      nc, _bounceY
-
-                ld      c, a                            ; Check hitting frozen screen
-                ld      a, (ballXPos)
-                ld      b, a
-                ld      a, (xDir)
-                add     a, b
-                ld      de, (ballYPos)   
-                ld      d, a
-                call    getAttrAddr
-                ld      a, (hl)
-                cp      FREEZE_COLOUR
-                jp      nz, _checkXPos
-
-_bounceY
-                ld      a, (yDir)
-                neg
-                ld      (yDir), a
-                ld      b, a
-                ld      a, (ballYPos)
-                add     a, b
-                ld      (ballYPos), a
-
-_checkXPos
-                ld      a, (ballXPos)
-                ld      b, a
-                ld      a, (xDir)
-                add     a, b
-                ld      (ballXPos), a
-
-                cp      SCRN_LEFT_CELL                  ; Check hitting left/right screen edges
-                jp      c, _bounceX
-                cp      SCRN_RIGHT_CELL
-                jp      nc, _bounceX
-
-                ld      de, (ballYPos)                  ; Check hitting frozen screen
-                call    getAttrAddr
-                ld      a, (hl)
-                cp      FREEZE_COLOUR
-
-                jp      nz, _drawBall      
-_bounceX
-                ld      a, (xDir)
-                neg
-                ld      (xDir), a
-                ld      b, a
-                ld      a, (ballXPos)
-                add     a, b
-                ld      (ballXPos), a
-
-_drawBall       ; Draw ball
-                ld      de, (ballYPos)
-                call    getAttrAddr
+                ld      hl, (BALL_POS_ADDR)
                 ld      (hl), BALL_COLOUR
 
-                ; Draw controller
-                ld      a, (wallDir)
-                cp      WALL_HORIZONTAL
-                jp      nz, _verticalWall
-                ld      b, WALL_HORIZONTAL_COLOUR
-                jp      _drawControl
-_verticalWall
-                ld      b, WALL_VERTICAL_COLOUR
+                halt 
 
-_drawControl
-                ld      de, (wallYpos)
-                push    bc
-                call    getAttrAddr
-                pop     bc
-                ld      a, (hl)
-                jp      nz, _saveScreen
-                ld      a, SCRN_COLOUR
-_saveScreen
-                ld      (oldScreen), a
-                ld      a, b
-                ld      (hl), a
-
-                halt
-                halt
-                halt
-
-                ; Erase ball
-                ld      de, (ballYPos)
-                call    getAttrAddr
+                ld      hl, (BALL_POS_ADDR)
                 ld      (hl), SCRN_COLOUR
 
-                ; Erase control
-                ld      de, (wallYpos)
-                call    getAttrAddr
-                ld      a, (oldScreen)
-                ld      (hl), a
+                jp      mainLoop                                    ; Loop
 
-
-                jp      mainLoop                        ; Loop
-
-                    
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
-; Convert a cell x, y location into an attribute screen address
-; 
-; Entry Registers:
-;   DE = Cell X, Cell Y
-; Used Registers:
-;   B, C, D, E, H, L
-; Returned Registers:
-;   HL = Attribute address
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
-getAttrAddr
-                ld      l, e                        ; Get the cell Y pos
-                ld      h, 0 
-
-                add     hl, hl                      ; Multiply the Y position by 32
-                add     hl, hl
-                add     hl, hl
-                add     hl, hl
-                add     hl, hl
-
-                ld      c, d                        ; Get the cell X pos
-                ld      b, 0
-                add     hl, bc                      
-
-                ld      de, ATTR_SCRN_ADDR 
-                add     hl, de
-
-                ret
-
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
-; Variables
-; ----------------------------------------------------------------------------------------------------------------------------------------------------------
-ballYPos        db      12
-ballXPos        db      16 
-yDir            db      1         
-xDir            db      1
-wallDir         db      0                           ; 0 = Horizontal, 1 = Vertical
-wallYpos        db      12
-wallXpos        db      16
-oldScreen       db      0
-
+xVector         dw      RIGHT_CELL
+yVector         dw      DOWN_CELL
 
                 END start
