@@ -102,19 +102,25 @@ mainLoop
 _checkRight                                             ; Move player right
                 rra
                 jr      c, _checkLeft
-                ld      (hl), RIGHT_CELL
+                ld      (hl), 0x01
+                inc     hl
+                ld      (hl), 0x00
 
 _checkLeft                                              ; Move player left
                 rra
                 jr      c, _checkUp
-                ld      (hl), LEFT_CELL
+                ld      (hl), 0xff
+                inc     hl
+                ld      (hl), 0xff
 
 _checkUp                                                ; Move player up
                 ld      bc, 0xfbfe
                 in      a, (c)
                 rra
                 jr      c, _checkDown
-                ld      (hl), UP_CELL
+                ld      (hl), 0xe0
+                inc     hl
+                ld      (hl), 0xff
 
 _checkDown                                              ; Move player down
                 inc     b 
@@ -122,16 +128,18 @@ _checkDown                                              ; Move player down
                 in      a, (c)
                 rra
                 jr      c, _movePlayer
-                ld      (hl), DOWN_CELL
+                ld      (hl), 0x20
+                inc     hl
+                ld      (hl), 0x00
 
 _movePlayer
                 ld      hl, (playerAddr)
                 ld      (hl), BORDER_COLOUR
                 ld      de, (playerVector)
                 add     hl, de
-;                 ld      a, BORDER_COLOUR                            
-;                 cp      (hl)         
-;                 jr      z, _drawplayer            
+                ld      a, BORDER_COLOUR                            
+                cp      (hl)         
+                jr      z, _drawplayer            
                 ld      (playerAddr), hl
                 
             ; -----------------------------------------------------------------------------
