@@ -91,7 +91,16 @@ drawCourt
                 dec     a  
                 jr      nz, drawCourt                               ; 21 bytes
 
+wait
+                ld      bc, 0x7ffe
+                in      a, (c)
+                rra
+                jr      c, wait
+
 mainLoop                                                          
+            
+
+
             ; -----------------------------------------------------------------------------
             ; Player movement
                 ld      bc, 0xdffe
@@ -145,8 +154,8 @@ _movePlayer
             ; -----------------------------------------------------------------------------
             ; Draw player 
 _drawplayer
-;                 ld      hl, (playerAddr)
-;                 ld      (hl), PLAYER_COLOUR
+                ld      hl, (playerAddr)
+                ld      (hl), PLAYER_COLOUR
 
             ; -----------------------------------------------------------------------------
             ; Move the balls
