@@ -24,8 +24,8 @@ ATTR_SCRN_ADDR          equ             0x5800
 ATTR_SCRN_SIZE          equ             0x300
 ATTR_ROW_SIZE           equ             0x1f
 
-ATTR_PLAY_ZONE_START    equ             0x5821
-ATTR_PLAY_ZONE_ROWS     equ             0x17
+ATTR_COURT_START        equ             ATTR_SCRN_ADDR + (1 * 32) + 1
+ATTR_COURT_ROWS         equ             0x16
 
 ATTR_ROW_24_ADDR        equ             0x5ae0
 ATTR_SIDE_BORDER_ADDR   equ             0x583f
@@ -45,10 +45,10 @@ PAPER                   equ             0x08                        ; Multiply w
 BRIGHT                  equ             0x40
 FLASH                   equ             0x80                        ; e.g. ATTR = BLACK * PAPER + CYAN + BRIGHT
 
-BAT_COLOUR              equ             BLUE * PAPER + BRIGHT
-BALL_COLOUR             equ             RED * PAPER + WHITE
-SCRN_COLOUR             equ             WHITE * PAPER + BLACK
-BORDER_COLOUR           equ             BLACK * PAPER + BRIGHT
+PLAYER_COLOUR           equ             RED * PAPER + BRIGHT
+BALL_COLOUR             equ             BLUE * PAPER + WHITE
+SCRN_COLOUR             equ             YELLOW * PAPER + BLACK
+BORDER_COLOUR           equ             BLACK * PAPER
 
 SCRN_TOP_CELL           equ             0x00
 SCRN_BOTTOM_CELL        equ             0x18
@@ -56,9 +56,9 @@ SCRN_LEFT_CELL          equ             0x00
 SCRN_RIGHT_CELL         equ             0x20
 
 UP_CELL                 equ             0xffe0
-DOWN_CELL               equ             0x20
+DOWN_CELL               equ             0x0020
 LEFT_CELL               equ             0xffff
-RIGHT_CELL              equ             0x01               
+RIGHT_CELL              equ             0x0001               
 
 ; -----------------------------------------------------------------------------
 ; MAIN CODE
@@ -66,58 +66,152 @@ RIGHT_CELL              equ             0x01
 
                 org     0x8000
 
+            ; -----------------------------------------------------------------------------
+            ; Init the bitmap screen and attributes
 start
-                ld      hl, BITMAP_SCRN_ADDR                        ; Clear the screen file & Attributes
+                ld      hl, BITMAP_SCRN_ADDR       
                 ld      de, BITMAP_SCRN_ADDR + 1
-                ld      bc, BITMAP_SCRN_SIZE                        ; Bitmap screen size + attributes size
+                ld      bc, BITMAP_SCRN_SIZE + ATTR_SCRN_SIZE       ; Bitmap screen size + attributes size
                 ld      (hl), l                                     ; L = 0 so use that to clear
-                ldir
+                ldir                                                ; 13 bytes
 
-                ld      (hl), BORDER_COLOUR                         ; Draw the top border using bright black background
-                ld      bc, ATTR_ROW_SIZE + 1
+            ; -----------------------------------------------------------------------------
+            ; Draw playing court
+                ld      a, 22                                    
+                ld      hl, ATTR_COURT_START
+drawCourt
+                push    hl
+                pop     de
+                inc     de
+                ld      bc, ATTR_ROW_SIZE - 2
+                ld      (hl), SCRN_COLOUR
                 ldir
+                ld      c, 3
+                add     hl, bc
+                dec     a  
+                jr      nz, drawCourt                               ; 21 bytes
 
-                ld      hl, ATTR_ROW_24_ADDR                        ; Draw bottom border
-                ld      de, ATTR_ROW_24_ADDR + 1                
-                ld      bc, ATTR_ROW_SIZE
-                ld      (hl), BORDER_COLOUR
-                ldir
+mainLoop                                                          
+            ; -----------------------------------------------------------------------------
+            ; Player movement
+                ld      bc, 0xdffe
+                in      a, (c)
 
-                ld      b, 23                                       ; Draw side borders
-                ld      hl, ATTR_SIDE_BORDER_ADDR
-                ld      de, 0x1f
-drawSides   
+                ld      hl, playerVector
+
+_checkRight                                             ; Move player right
+                rra
+                jr      c, _checkLeft
+                ld      (hl), RIGHT_CELL
+
+_checkLeft                                              ; Move player left
+                rra
+                jr      c, _checkUp
+                ld      (hl), LEFT_CELL
+
+_checkUp                                                ; Move player up
+                ld      bc, 0xfbfe
+                in      a, (c)
+                rra
+                jr      c, _checkDown
+                ld      (hl), UP_CELL
+
+_checkDown                                              ; Move player down
+                inc     b 
+                inc     b
+                in      a, (c)
+                rra
+                jr      c, _movePlayer
+                ld      (hl), DOWN_CELL
+
+_movePlayer
+                ld      hl, (playerAddr)
                 ld      (hl), BORDER_COLOUR
-                inc     hl
-                ld      (hl), BORDER_COLOUR
+                ld      de, (playerVector)
                 add     hl, de
-                djnz    drawSides
-
-mainLoop                                                            ; Main game loop
+;                 ld      a, BORDER_COLOUR                            
+;                 cp      (hl)         
+;                 jr      z, _drawplayer            
+                ld      (playerAddr), hl
                 
-                ld      hl, (ballAddr)
-                ld      de, (xVector)
-                add     hl, de
-                ld      a, BORDER_COLOUR
-                cp      (hl)
-                jp      nz, _updateXVector
-                
+            ; -----------------------------------------------------------------------------
+            ; Draw player 
+_drawplayer
+;                 ld      hl, (playerAddr)
+;                 ld      (hl), PLAYER_COLOUR
 
-_updateXVector
-                ld      (ballAddr), hl
+            ; -----------------------------------------------------------------------------
+            ; Move the balls
+_moveBall
+                ld      de, xVector
+                ld      bc, (xVector)
+                call    updateBallWithVector
+                ld      de, yVector
+                ld      bc, (yVector)
+                call    updateBallWithVector
 
+            ; -----------------------------------------------------------------------------
+            ; Draw balls
+_drawBall
                 ld      hl, (ballAddr)
                 ld      (hl), BALL_COLOUR
 
                 halt 
+                halt
+                halt
 
+            ; -----------------------------------------------------------------------------
+            ; Erase balls
+_eraseBall
                 ld      hl, (ballAddr)
                 ld      (hl), SCRN_COLOUR
 
                 jp      mainLoop                                    ; Loop
+
+; -----------------------------------------------------------------------------
+; Update the balls position based on the vector provided
+;
+; DE = vector address
+; BC = vector value
+; -----------------------------------------------------------------------------
+updateBallWithVector
+                ld      hl, (ballAddr)
+                add     hl, bc
+                ld      a, BORDER_COLOUR
+                cp      (hl)
+                jr      nz, _saveBallPos
+
+                ld      hl, 0
+                sbc     hl, bc
+                
+                ex      de, hl
+                
+                ld      (hl), e
+                inc     hl
+                ld      (hl), d
+                ret
+_saveBallPos     
+                ld      (ballAddr), hl
+                ret
+
+; -----------------------------------------------------------------------------
+; Variables
+; -----------------------------------------------------------------------------
+courtAddr       dw      ATTR_COURT_START
+
+playerAddr      dw      ATTR_SCRN_ADDR + (12 * 32) + 16
+playerVector    dw      UP_CELL
 
 ballAddr        dw      ATTR_SCRN_ADDR + (12 * 32) + 16
 xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
 
                 END start
+
+
+
+
+
+
+
+
