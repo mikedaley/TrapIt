@@ -24,7 +24,7 @@ ATTR_SCRN_ADDR          equ             0x5800
 ATTR_SCRN_SIZE          equ             0x300
 ATTR_ROW_SIZE           equ             0x1f
 
-ATTR_COURT_START        equ             ATTR_SCRN_ADDR + (1 * 32) + 1
+ATTR_COURT_START        equ             ATTR_SCRN_ADDR + (3 * 32) + 1
 ATTR_COURT_ROWS         equ             0x16
 
 ATTR_ROW_24_ADDR        equ             0x5ae0
@@ -60,6 +60,9 @@ DOWN_CELL               equ             0x0020
 LEFT_CELL               equ             0xffff
 RIGHT_CELL              equ             0x0001               
 
+LEVELS_COMPLETE_ADDR    equ             0x7daa
+FROZEN_COUNT_ADDR       equ             0x7dab
+
 ; -----------------------------------------------------------------------------
 ; MAIN CODE
 ; -----------------------------------------------------------------------------
@@ -68,7 +71,14 @@ RIGHT_CELL              equ             0x0001
 
             ; -----------------------------------------------------------------------------
             ; Init the bitmap screen and attributes
+init
+
 start
+                ld      hl, LEVELS_COMPLETE_ADDR
+                ld      (hl), 1                                     ; Reset win count
+                inc     hl
+                ld      (hl), 0                                     ; Reset frozen count
+
                 ld      hl, BITMAP_SCRN_ADDR       
                 ld      de, BITMAP_SCRN_ADDR + 1
                 ld      bc, BITMAP_SCRN_SIZE + ATTR_SCRN_SIZE       ; Bitmap screen size + attributes size
@@ -77,7 +87,7 @@ start
 
             ; -----------------------------------------------------------------------------
             ; Draw playing court
-                ld      a, 22                                    
+                ld      a, 20                                    
                 ld      hl, ATTR_COURT_START
 drawCourt
                 push    hl
@@ -91,15 +101,18 @@ drawCourt
                 dec     a  
                 jr      nz, drawCourt                               ; 21 bytes
 
-wait
-                ld      bc, 0x7ffe
-                in      a, (c)
-                rra
-                jr      c, wait
+                push    hl
+
+                ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1
+                ld      de, ATTR_SCRN_ADDR + (1 * 32) + 2
+                ld      a, (LEVELS_COMPLETE_ADDR)
+                ld      c, a
+                ld      (hl), GREEN * PAPER + WHITE
+                ldir
+
+                jp      waitForSpace
 
 mainLoop                                                          
-            
-
 
             ; -----------------------------------------------------------------------------
             ; Player movement
@@ -114,6 +127,7 @@ _checkRight                                             ; Move player right
                 ld      (hl), 0x01
                 inc     hl
                 ld      (hl), 0x00
+                jr      _movePlayer
 
 _checkLeft                                              ; Move player left
                 rra
@@ -121,6 +135,7 @@ _checkLeft                                              ; Move player left
                 ld      (hl), 0xff
                 inc     hl
                 ld      (hl), 0xff
+                jr      _movePlayer
 
 _checkUp                                                ; Move player up
                 ld      bc, 0xfbfe
@@ -130,16 +145,24 @@ _checkUp                                                ; Move player up
                 ld      (hl), 0xe0
                 inc     hl
                 ld      (hl), 0xff
+                jr      _movePlayer
 
 _checkDown                                              ; Move player down
                 inc     b 
                 inc     b
                 in      a, (c)
                 rra
-                jr      c, _movePlayer
+                jr      c, _checkEnter
                 ld      (hl), 0x20
                 inc     hl
                 ld      (hl), 0x00
+
+_checkEnter
+                ld      bc, 0xbffe
+                in      a, (c)
+                rra
+                jr      c, _movePlayer
+                jp      start
 
 _movePlayer
                 ld      hl, (playerAddr)
@@ -180,10 +203,38 @@ _drawBall
             ; -----------------------------------------------------------------------------
             ; Erase balls
 _eraseBall
-                ld      hl, (ballAddr)
                 ld      (hl), SCRN_COLOUR
 
-                jp      mainLoop                                    ; Loop
+            ; -----------------------------------------------------------------------------
+            ; Has the ball been trapped    
+                pop     de                                      ; Get the previous position 
+                push    hl                                      ; Save the current position 
+                or      1
+                sbc     hl, de
+                jr      z, _trapped
+
+                jp      mainLoop
+
+_trapped
+                ld      hl, FROZEN_COUNT_ADDR
+                inc     (hl)
+                cp      2
+                jp      c, mainLoop
+
+                ld      hl, LEVELS_COMPLETE_ADDR
+                inc     (hl)
+
+                jp      start                                    ; Loop
+
+; -----------------------------------------------------------------------------
+; Wait for the space bar to be pressed and then jump to the main loop
+; -----------------------------------------------------------------------------
+waitForSpace
+                ld      bc, 0x7ffe
+                in      a, (c)
+                rra
+                jr      c, waitForSpace
+                jp      mainLoop
 
 ; -----------------------------------------------------------------------------
 ; Update the balls position based on the vector provided
@@ -206,6 +257,7 @@ updateBallWithVector
                 ld      (hl), e
                 inc     hl
                 ld      (hl), d
+
                 ret
 _saveBallPos     
                 ld      (ballAddr), hl
@@ -223,7 +275,7 @@ ballAddr        dw      ATTR_SCRN_ADDR + (12 * 32) + 16
 xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
 
-                END start
+                END init
 
 
 
