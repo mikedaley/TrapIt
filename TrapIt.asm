@@ -73,7 +73,7 @@ FROZEN_COUNT_ADDR       equ             0x7dab
             ; Init the bitmap screen and attributes
 init
                 ld      hl, LEVELS_COMPLETE_ADDR
-                ld      (hl), 1                                     ; Reset win count
+                ld      (hl), 0                                     ; Reset win count
                 inc     hl
                 ld      (hl), 0                                     ; Reset frozen count
 
@@ -101,17 +101,20 @@ drawCourt
                 dec     a  
                 jr      nz, drawCourt                               ; 21 bytes
 
+            ; -----------------------------------------------------------------------------
+            ; Draw the win bar 
+                ld      a, (LEVELS_COMPLETE_ADDR)
+                cp      0
+                jr      z, mainLoop                
+
                 ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1
                 ld      de, ATTR_SCRN_ADDR + (1 * 32) + 2
-                ld      a, (LEVELS_COMPLETE_ADDR)
                 ld      c, a
                 ld      (hl), GREEN * PAPER + WHITE
                 ldir
 
-                push    hl
-
-                jp      waitForSpace
-
+                push    hl                              ; Place an initial value on the stack
+                                                        ; to be used later when see if the ball has got trapped
 mainLoop                                                          
 
             ; -----------------------------------------------------------------------------
@@ -226,16 +229,6 @@ _trapped
                 inc     (hl)
 
                 jp      start                                    ; Loop
-
-; -----------------------------------------------------------------------------
-; Wait for the space bar to be pressed and then jump to the main loop
-; -----------------------------------------------------------------------------
-waitForSpace
-                ld      bc, 0x7ffe
-                in      a, (c)
-                rra
-                jr      c, waitForSpace
-                jp      mainLoop
 
 ; -----------------------------------------------------------------------------
 ; Update the balls position based on the vector provided
