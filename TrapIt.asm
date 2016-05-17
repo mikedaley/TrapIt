@@ -72,12 +72,12 @@ FROZEN_COUNT_ADDR       equ             0x7dab
             ; -----------------------------------------------------------------------------
             ; Init the bitmap screen and attributes
 init
-
-start
                 ld      hl, LEVELS_COMPLETE_ADDR
                 ld      (hl), 1                                     ; Reset win count
                 inc     hl
                 ld      (hl), 0                                     ; Reset frozen count
+
+start
 
                 ld      hl, BITMAP_SCRN_ADDR       
                 ld      de, BITMAP_SCRN_ADDR + 1
@@ -101,14 +101,14 @@ drawCourt
                 dec     a  
                 jr      nz, drawCourt                               ; 21 bytes
 
-                push    hl
-
                 ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1
                 ld      de, ATTR_SCRN_ADDR + (1 * 32) + 2
                 ld      a, (LEVELS_COMPLETE_ADDR)
                 ld      c, a
                 ld      (hl), GREEN * PAPER + WHITE
                 ldir
+
+                push    hl
 
                 jp      waitForSpace
 
@@ -162,7 +162,7 @@ _checkEnter
                 in      a, (c)
                 rra
                 jr      c, _movePlayer
-                jp      start
+                jp      init
 
 _movePlayer
                 ld      hl, (playerAddr)
@@ -191,17 +191,16 @@ _moveBall
                 call    updateBallWithVector
 
             ; -----------------------------------------------------------------------------
-            ; Draw balls
+            ; Draw ball
 _drawBall
                 ld      hl, (ballAddr)
                 ld      (hl), BALL_COLOUR
 
                 halt 
                 halt
-                halt
 
             ; -----------------------------------------------------------------------------
-            ; Erase balls
+            ; Erase ball
 _eraseBall
                 ld      (hl), SCRN_COLOUR
 
@@ -211,15 +210,17 @@ _eraseBall
                 push    hl                                      ; Save the current position 
                 or      1
                 sbc     hl, de
-                jr      z, _trapped
-
+                jp      z, _trapped
+                ld      hl, FROZEN_COUNT_ADDR
+                ld      (hl), 0
                 jp      mainLoop
 
 _trapped
                 ld      hl, FROZEN_COUNT_ADDR
                 inc     (hl)
+                ld      a, (hl)
                 cp      2
-                jp      c, mainLoop
+                jp      nz, mainLoop
 
                 ld      hl, LEVELS_COMPLETE_ADDR
                 inc     (hl)
@@ -266,7 +267,7 @@ _saveBallPos
 ; -----------------------------------------------------------------------------
 ; Variables
 ; -----------------------------------------------------------------------------
-courtAddr       dw      ATTR_COURT_START
+; courtAddr       dw      ATTR_COURT_START
 
 playerAddr      dw      ATTR_SCRN_ADDR + (12 * 32) + 16
 playerVector    dw      UP_CELL
