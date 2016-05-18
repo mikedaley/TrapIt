@@ -46,9 +46,9 @@ PAPER                   equ             0x08                        ; Multiply w
 BRIGHT                  equ             0x40
 FLASH                   equ             0x80                        ; e.g. ATTR = BLACK * PAPER + CYAN + BRIGHT
 
-PLAYER_COLOUR           equ             RED * PAPER + BRIGHT
-BALL_COLOUR             equ             BLUE * PAPER + WHITE
-SCRN_COLOUR             equ             YELLOW * PAPER + BLACK
+PLAYER_COLOUR           equ             RED * PAPER + WHITE + BRIGHT + FLASH
+BALL_COLOUR             equ             YELLOW * PAPER + WHITE
+SCRN_COLOUR             equ             BLUE * PAPER + BLACK
 BORDER_COLOUR           equ             BLACK * PAPER               ; Must be Black on Black as that is what the attr memory is initialised too
 
 UP_CELL                 equ             0xffe0                      ; - 32
@@ -76,6 +76,9 @@ init
                 ld      (hl), 0                                     ; Reset win count
                 inc     hl
                 ld      (hl), 0                                     ; Reset trap count
+
+                ld      a, 0
+                out     (254), a
 
 ; -----------------------------------------------------------------------------
 ; Initiaise the screen by clearing the bitmap screen and attributes. Everything
