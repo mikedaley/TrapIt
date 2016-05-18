@@ -56,6 +56,9 @@ DOWN_CELL               equ             0x0020                      ; + 32
 LEFT_CELL               equ             0xffff                      ; -1 
 RIGHT_CELL              equ             0x0001                      ; + 1
 
+MAX_TRAPPED_COUNT       equ             0x02                        ; Numer of frames the ball has been unable to move. If the trapped
+                                                                    ; count reaches this number then the ball is trapped and the level ends
+
 DYN_VAR_LEVELS_COMPLETE equ             0x00                        ; Stores the number of consecutive levels completed
 DYN_VAR_TRAPPED_COUNT   equ             0x01                        ; Stores how many frames the ball has not been able to move
 
@@ -102,25 +105,25 @@ drawRow
                 ld      c, 3
                 add     hl, bc
                 dec     a  
-                jr      nz, drawRow                                ; 21 bytes
+                jr      nz, drawRow                                 ; 21 bytes
 
 ; -----------------------------------------------------------------------------
 ; Draw the progress bar
 ; -----------------------------------------------------------------------------
 drawProgress
                 ld      a, (dynamicVariables + DYN_VAR_LEVELS_COMPLETE) ; If the level count == 0...
-                or      a                                               ; ...then don't draw the...
-                jr      z, mainLoop                                     ; ...progress bar
+                or      a                                           ; ...then don't draw the...
+                jr      z, mainLoop                                 ; ...progress bar
 
-                ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1               ; Point HL to the start of the progress bar       
+                ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1           ; Point HL to the start of the progress bar       
 drawProgressBlock
-                ld      (hl), GREEN * PAPER + WHITE                     ; Paint the block
-                inc     hl                                              ; Move to the right
-                dec     a                                               ; Dec the level count
-                jr      nz, drawProgressBlock                           ; If we are not at zero go again
+                ld      (hl), GREEN * PAPER + WHITE                 ; Paint the block
+                inc     hl                                          ; Move to the right
+                dec     a                                           ; Dec the level count
+                jr      nz, drawProgressBlock                       ; If we are not at zero go again
 
-                push    hl                              ; Place an initial value on the stack
-                                                        ; to be used later when see if the ball has got trapped
+                push    hl                                          ; Place an initial value on the stack
+                                                                    ; to be used later when see if the ball has got trapped
 
 ; -----------------------------------------------------------------------------
 ; Main game loop
@@ -128,118 +131,123 @@ drawProgressBlock
 mainLoop                                                          
 
             ; -----------------------------------------------------------------------------
-            ; Player movement
-                ld      bc, 0xdffe                      ; Read keys YUIOP
-                in      a, (c)
+            ; Read the keyboard and update the players direction vector
+                ld      bc, 0xdffe                                  ; Read keys YUIOP
+                in      a, (c)          
+            
+                ld      hl, playerVector                            ; We will use HL in a few places so just load it once here
+            
+_checkRight                                                         ; Move player right
+                rra         
+                jr      c, _checkLeft                               ; If P was not pressed check O as we don't need to IN again
+                ld      (hl), 0x01                                  ; P was pressed so update the balls address by adding 0x01
+                inc     hl          
+                ld      (hl), 0x00          
+                jr      _movePlayer                                 ; Don't check for any more keys
+            
+_checkLeft                                                          ; Move player left
+                rra         
+                jr      c, _checkUp         
+                ld      (hl), 0xff          
+                inc     hl          
+                ld      (hl), 0xff          
+                jr      _movePlayer         
+            
+_checkUp                                                            ; Move player up
+                ld      bc, 0xfbfe                                  ; Read keys QWERT
+                in      a, (c)          
+                rra         
+                jr      c, _checkDown           
+                ld      (hl), 0xe0          
+                inc     hl          
+                ld      (hl), 0xff          
+                jr      _movePlayer         
+            
+_checkDown                                                          ; Move player down
+                inc     b                                           ; INC B from 0xFB to 0xFD to read ASDFG
+                inc     b           
+                in      a, (c)          
+                rra         
+                jr      c, _checkEnter          
+                ld      (hl), 0x20          
+                inc     hl          
+                ld      (hl), 0x00          
+            
+_checkEnter         
+                ld      bc, 0xbffe                                  ; Read keys HJKLEnter
+                in      a, (c)          
+                rra         
+                jr      c, _movePlayer          
+                jp      init                                        ; Player wants to reset to init the game
 
-                ld      hl, playerVector                ; We will use HL in a few places so just load it once here
-
-_checkRight                                             ; Move player right
-                rra
-                jr      c, _checkLeft                   ; If P was not pressed check O as we don't need to IN again
-                ld      (hl), 0x01                      ; P was pressed so update the balls address by adding 0x01
-                inc     hl
-                ld      (hl), 0x00
-                jr      _movePlayer                     ; Don't check for any more keys
-
-_checkLeft                                              ; Move player left
-                rra
-                jr      c, _checkUp
-                ld      (hl), 0xff
-                inc     hl
-                ld      (hl), 0xff
-                jr      _movePlayer
-
-_checkUp                                                ; Move player up
-                ld      bc, 0xfbfe                      ; Read keys QWERT
-                in      a, (c)
-                rra
-                jr      c, _checkDown
-                ld      (hl), 0xe0
-                inc     hl
-                ld      (hl), 0xff
-                jr      _movePlayer
-
-_checkDown                                              ; Move player down
-                inc     b                               ; INC B from 0xFB to 0xFD to read ASDFG
-                inc     b
-                in      a, (c)
-                rra
-                jr      c, _checkEnter
-                ld      (hl), 0x20
-                inc     hl
-                ld      (hl), 0x00
-
-_checkEnter
-                ld      bc, 0xbffe                      ; Read keys HJKLEnter
-                in      a, (c)
-                rra
-                jr      c, _movePlayer
-                jp      init                            ; Player wants to reset to init the game
-
+            ; -----------------------------------------------------------------------------
+            ; Update the players position based on the current player vector
 _movePlayer
-                ld      hl, (playerAddr)                ; Get the players location address             
-                ld      (hl), BORDER_COLOUR             ; Draw the border colour in the current location 
-                ld      de, (playerVector)              ; Get the players movement vector
-                add     hl, de                          ; Calculate the new player position address
-                ld      a, BORDER_COLOUR                             
-                cp      (hl)                            ; Compare the new location with the border colour...
-                jr      z, _drawplayer                  ; ...and if it is a border block then don't save HL
-                ld      (playerAddr), hl                ; New position is not a border block so save the new position 
+                ld      hl, (playerAddr)                            ; Get the players location address             
+                ld      (hl), BORDER_COLOUR                         ; Draw the border colour in the current location 
+                ld      de, (playerVector)                          ; Get the players movement vector
+                add     hl, de                                      ; Calculate the new player position address
+                ld      a, BORDER_COLOUR                                         
+                cp      (hl)                                        ; Compare the new location with the border colour...
+                jr      z, _drawplayer                              ; ...and if it is a border block then don't save HL
+                ld      (playerAddr), hl                            ; New position is not a border block so save the new position 
                 
             ; -----------------------------------------------------------------------------
             ; Draw player 
 _drawplayer
-                ld      hl, (playerAddr)
-                ld      (hl), PLAYER_COLOUR
+                ld      hl, (playerAddr)                            ; Load the players position 
+                ld      (hl), PLAYER_COLOUR                         ; and draw the player
 
             ; -----------------------------------------------------------------------------
-            ; Move the balls
+            ; Move the ball
 _moveBall
-                ld      de, xVector
-                ld      bc, (xVector)
-                call    updateBallWithVector
+                ld      de, xVector                                 ; We need to pass a pointer to the vector...
+                ld      bc, (xVector)                               ; ...and the actual vector into the ball update routine
+                call    updateBallWithVector                        ; Update the ball with the x vector
+
                 ld      de, yVector
                 ld      bc, (yVector)
-                call    updateBallWithVector
+                call    updateBallWithVector            
 
             ; -----------------------------------------------------------------------------
             ; Draw ball
 _drawBall
-                ld      hl, (ballAddr)
-                ld      (hl), BALL_COLOUR
+                ld      hl, (ballAddr)                              ; Draw the ball at the...
+                ld      (hl), BALL_COLOUR                           ; ...current position 
 
-                halt 
+            ; -----------------------------------------------------------------------------
+            ; Sync screen and slow things down to 25 fps
+                halt                                    
                 halt
 
             ; -----------------------------------------------------------------------------
             ; Erase ball
 _eraseBall
-                ld      (hl), SCRN_COLOUR
+                ld      (hl), SCRN_COLOUR                           ; HL is already pointing to the balls location so erase it
 
             ; -----------------------------------------------------------------------------
             ; Has the ball been trapped    
-                pop     de                                      ; Get the previous position 
-                push    hl                                      ; Save the current position 
-                or      1                                       ; Clear the carry flag
-                sbc     hl, de                                  ; current pos - previous pos
-                ld      hl, dynamicVariables + DYN_VAR_TRAPPED_COUNT    ; Do this now so we don't have to do it again in the
-                                                                        ; _trapped branch :)
-                jp      z, _trapped                             ; If current pos == previous pos increment the trapped counter...
-                ld      (hl), 0                                 ; ...else reset the trapped counter
+                pop     de                                          ; Get the previous position 
+                push    hl                                          ; Save the current position 
+                or      1                                           ; Clear the carry flag
+                sbc     hl, de                                      ; current pos - previous pos
+                ld      hl, dynamicVariables + DYN_VAR_TRAPPED_COUNT; Do this now so we don't have to do it again in the
+                                                                    ; _trapped branch :)
+                jp      z, _trapped                                 ; If current pos == previous pos increment the trapped counter...
+                ld      (hl), 0                                     ; ...else reset the trapped counter
 
-                jp      mainLoop                                ; Round we go again :)
+                jp      mainLoop                                    ; Round we go again :)
 
 _trapped
-                inc     (hl)
-                ld      a, (hl)
-                cp      2
+                inc     (hl)                                        ; Up the trapped count
+                ld      a, (hl)                                     ; Check to see if the trapped count...
+                cp      2                                           ; ... is equal to 2
                 jp      nz, mainLoop
 
-                ld      hl, dynamicVariables
-                inc     (hl)
+                dec     hl                                          ; Point HL at the level pointer address
+                inc     (hl)                                        ; Inc the level complete counter
 
-                jp      start                                    ; Loop
+                jp      start                                       ; Loop
 
 ; -----------------------------------------------------------------------------
 ; Update the balls position based on the vector provided
@@ -248,24 +256,23 @@ _trapped
 ; BC = vector value
 ; -----------------------------------------------------------------------------
 updateBallWithVector
-                ld      hl, (ballAddr)
-                add     hl, bc
-                ld      a, BORDER_COLOUR
-                cp      (hl)
-                jr      nz, _saveBallPos
-
-                ld      hl, 0
-                sbc     hl, bc
-                
-                ex      de, hl
-                
-                ld      (hl), e
-                inc     hl
-                ld      (hl), d
-
-                ret
-_saveBallPos     
-                ld      (ballAddr), hl
+                ld      hl, (ballAddr)                              ; Get the balls current position address...
+                add     hl, bc                                      ; ...and calculate the new position using the vector in BC
+                cp      (hl)                                        ; A already holds the border colour at this point so see if..
+                jr      nz, _saveBallPos                            ; ...the new position is a border block and is not save the new pos
+    
+                ld      hl, 0                                       ; The new position was a border block...
+                sbc     hl, bc                                      ; ...so NEG the vector in BC
+                    
+                ex      de, hl                                      ; Need to save the new vector so switch DE and HL
+                    
+                ld      (hl), e                                     ; Save the new vector back into the vector addr
+                inc     hl  
+                ld      (hl), d 
+    
+                ret                                             
+_saveBallPos        
+                ld      (ballAddr), hl                              ; Save the new position in HL
                 ret
 
 ; -----------------------------------------------------------------------------
@@ -278,7 +285,7 @@ ballAddr        dw      ATTR_SCRN_ADDR + (12 * 32) + 16
 xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
 
-dynamicVariables
+dynamicVariables        ; Points to the address in memory where we will store some dynamic variables
                 ; First byte is the Levels the count of levels completed
                 ; Second byte is the # frames the ball has not been able to move
 
