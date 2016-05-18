@@ -263,6 +263,7 @@ updateBallWithVector
                 jr      nz, _saveBallPos                            ; ...the new position is a border block and is not save the new pos
     
                 ld      hl, 0                                       ; The new position was a border block...
+                or      1
                 sbc     hl, bc                                      ; ...so NEG the vector in BC
                     
                 ex      de, hl                                      ; Need to save the new vector so switch DE and HL
@@ -270,19 +271,7 @@ updateBallWithVector
                 ld      (hl), e                                     ; Save the new vector back into the vector addr
                 inc     hl  
                 ld      (hl), d 
-
-                call    playClick
     
-                ret                                             
-_saveBallPos        
-                ld      (ballAddr), hl                              ; Save the new position in HL
-                ret
-
-; -----------------------------------------------------------------------------
-; Play click sound effect. Used when the ball hits a black block
-; -----------------------------------------------------------------------------
-playClick       
-                ld      b, 100
 _playClickLoop
                 ld      a, b
                 and     248
@@ -291,6 +280,11 @@ _playClickLoop
                 xor     a
                 and     248
                 out     (254), a
+
+                ret                                             
+
+_saveBallPos        
+                ld      (ballAddr), hl                              ; Save the new position in HL
                 ret
 
 ; -----------------------------------------------------------------------------
@@ -304,8 +298,8 @@ xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
 
 dynamicVariables        ; Points to the address in memory where we will store some dynamic variables
-                ; First byte is the Levels the count of levels completed
-                ; Second byte is the # frames the ball has not been able to move
+                        ; First byte is the Levels the count of levels completed
+                        ; Second byte is the # frames the ball has not been able to move
 
                 END init
 
