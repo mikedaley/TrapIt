@@ -1,15 +1,25 @@
 ; -----------------------------------------------------------------------------
-; TRAPIT - Mike Daley
-;
+; Name:     TRAPIT
+; Author:   Mike Daley
 ; Started:  12th May 2016
 ; Finished: 
 ;
-; The idea of this game is to freeze sections of the playing area by drawing a
-; vertical or horizontal line which devides the screen. If the ball hits the
-; line which it is being drawn then the player looses a life.
+; The idea of the game is to move the red player square around the screen leaving a
+; trail of black squares. The player and the ball are unable to move through black
+; squares. The player must trap the ball so that it cannot move. When the ball cannot
+; move any more the players green progress bar at the top of the screen is increased
+; and the level is reset.
 ;
-; To win the game you need to either freeze 75%+ of the playing area, or trap
-; the ball in a frozen area.
+; If the player gets into a position where they are stuck and cannot trap the ball then
+; pressing the Enter key will reset the level, loosing all their progress :) The aim of
+; the game is to get the progress bar as long as possilbe.
+;
+; To move the player the Q, A, O, P keys are used and Enter resets the level.
+; 
+; Remember to be careful as the ball will pass through the players red square which can
+; cause the ball to escape from the player just when you think you have it trapped.
+;
+; This game is very easy to play but hard to master :o)
 ;
 ; This is an entry for the 256 byte game challenge on the Z80 Assembly programming
 ; on the ZX Spectrum Facebook Group https://www.facebook.com/groups/z80asm/
@@ -23,15 +33,6 @@ BITMAP_SCRN_SIZE        equ             0x1800
 ATTR_SCRN_ADDR          equ             0x5800
 ATTR_SCRN_SIZE          equ             0x300
 ATTR_ROW_SIZE           equ             0x1f
-
-ATTR_COURT_START        equ             ATTR_SCRN_ADDR + (3 * 32) + 1
-ATTR_COURT_ROWS         equ             0x16
-
-ATTR_ROW_24_ADDR        equ             0x5ae0
-ATTR_SIDE_BORDER_ADDR   equ             0x583f
-
-COLUMNS                 equ             0x20
-ROWS                    equ             0x18
 
 BLACK                   equ             0x00
 BLUE                    equ             0x01
@@ -48,20 +49,14 @@ FLASH                   equ             0x80                        ; e.g. ATTR 
 PLAYER_COLOUR           equ             RED * PAPER + BRIGHT
 BALL_COLOUR             equ             BLUE * PAPER + WHITE
 SCRN_COLOUR             equ             YELLOW * PAPER + BLACK
-BORDER_COLOUR           equ             BLACK * PAPER
+BORDER_COLOUR           equ             BLACK * PAPER               ; Must be Black on Black as that is what the attr memory is initialised too
 
-SCRN_TOP_CELL           equ             0x00
-SCRN_BOTTOM_CELL        equ             0x18
-SCRN_LEFT_CELL          equ             0x00
-SCRN_RIGHT_CELL         equ             0x20
+UP_CELL                 equ             0xffe0                      ; - 32
+DOWN_CELL               equ             0x0020                      ; + 32
+LEFT_CELL               equ             0xffff                      ; -1 
+RIGHT_CELL              equ             0x0001                      ; + 1
 
-UP_CELL                 equ             0xffe0
-DOWN_CELL               equ             0x0020
-LEFT_CELL               equ             0xffff
-RIGHT_CELL              equ             0x0001               
 
-LEVELS_COMPLETE_ADDR    equ             0x7daa
-FROZEN_COUNT_ADDR       equ             0x7dab
 
 ; -----------------------------------------------------------------------------
 ; MAIN CODE
@@ -72,13 +67,12 @@ FROZEN_COUNT_ADDR       equ             0x7dab
             ; -----------------------------------------------------------------------------
             ; Init the bitmap screen and attributes
 init
-                ld      hl, LEVELS_COMPLETE_ADDR
+                ld      hl, dynamicVariables
                 ld      (hl), 0                                     ; Reset win count
                 inc     hl
-                ld      (hl), 0                                     ; Reset frozen count
+                ld      (hl), 0                                     ; Reset trap count
 
 start
-
                 ld      hl, BITMAP_SCRN_ADDR       
                 ld      de, BITMAP_SCRN_ADDR + 1
                 ld      bc, BITMAP_SCRN_SIZE + ATTR_SCRN_SIZE       ; Bitmap screen size + attributes size
@@ -88,7 +82,7 @@ start
             ; -----------------------------------------------------------------------------
             ; Draw playing court
                 ld      a, 20                                    
-                ld      hl, ATTR_COURT_START
+                ld      hl, ATTR_SCRN_ADDR + (3 * 32) + 1
 drawCourt
                 push    hl
                 pop     de
@@ -103,7 +97,7 @@ drawCourt
 
             ; -----------------------------------------------------------------------------
             ; Draw the win bar 
-                ld      a, (LEVELS_COMPLETE_ADDR)
+                ld      a, (dynamicVariables)
                 cp      0
                 jr      z, mainLoop                
 
@@ -214,18 +208,18 @@ _eraseBall
                 or      1
                 sbc     hl, de
                 jp      z, _trapped
-                ld      hl, FROZEN_COUNT_ADDR
+                ld      hl, dynamicVariables + 1
                 ld      (hl), 0
                 jp      mainLoop
 
 _trapped
-                ld      hl, FROZEN_COUNT_ADDR
+                ld      hl, dynamicVariables + 1
                 inc     (hl)
                 ld      a, (hl)
                 cp      2
                 jp      nz, mainLoop
 
-                ld      hl, LEVELS_COMPLETE_ADDR
+                ld      hl, dynamicVariables
                 inc     (hl)
 
                 jp      start                                    ; Loop
@@ -268,6 +262,8 @@ playerVector    dw      UP_CELL
 ballAddr        dw      ATTR_SCRN_ADDR + (12 * 32) + 16
 xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
+
+dynamicVariables
 
                 END init
 
