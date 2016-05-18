@@ -140,7 +140,7 @@ mainLoop
 _checkRight                                                         ; Move player right
                 rra         
                 jr      c, _checkLeft                               ; If P was not pressed check O as we don't need to IN again
-                ld      (hl), 0x01                                  ; P was pressed so update the balls address by adding 0x01
+                ld      (hl), 0x01                                  ; P pressed so set the player vector to 0x0001
                 inc     hl          
                 ld      (hl), 0x00          
                 jr      _movePlayer                                 ; Don't check for any more keys
@@ -148,7 +148,7 @@ _checkRight                                                         ; Move playe
 _checkLeft                                                          ; Move player left
                 rra         
                 jr      c, _checkUp         
-                ld      (hl), 0xff          
+                ld      (hl), 0xff                                  ; O pressed so set the player vector to 0xffff
                 inc     hl          
                 ld      (hl), 0xff          
                 jr      _movePlayer         
@@ -158,7 +158,7 @@ _checkUp                                                            ; Move playe
                 in      a, (c)          
                 rra         
                 jr      c, _checkDown           
-                ld      (hl), 0xe0          
+                ld      (hl), 0xe0                                  ; Q pressed so set the player vector to 0xfffe
                 inc     hl          
                 ld      (hl), 0xff          
                 jr      _movePlayer         
@@ -169,7 +169,7 @@ _checkDown                                                          ; Move playe
                 in      a, (c)          
                 rra         
                 jr      c, _checkEnter          
-                ld      (hl), 0x20          
+                ld      (hl), 0x20                                  ; A pressed so set the player vectory to 0x0020
                 inc     hl          
                 ld      (hl), 0x00          
             
