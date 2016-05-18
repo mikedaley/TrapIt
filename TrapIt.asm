@@ -56,7 +56,8 @@ DOWN_CELL               equ             0x0020                      ; + 32
 LEFT_CELL               equ             0xffff                      ; -1 
 RIGHT_CELL              equ             0x0001                      ; + 1
 
-
+DYN_VAR_LEVELS_COMPLETE equ             0x00                        ; Stores the number of consecutive levels completed
+DYN_VAR_TRAPPED_COUNT   equ             0x01                        ; Stores how many frames the ball has not been able to move
 
 ; -----------------------------------------------------------------------------
 ; MAIN CODE
@@ -64,14 +65,20 @@ RIGHT_CELL              equ             0x0001                      ; + 1
 
                 org     0x8000
 
-            ; -----------------------------------------------------------------------------
-            ; Init the bitmap screen and attributes
+; -----------------------------------------------------------------------------
+; Initialiase the level complete and trapped variables
+; -----------------------------------------------------------------------------
 init
-                ld      hl, dynamicVariables
+                ld      hl, dynamicVariables + DYN_VAR_LEVELS_COMPLETE
                 ld      (hl), 0                                     ; Reset win count
                 inc     hl
                 ld      (hl), 0                                     ; Reset trap count
 
+; -----------------------------------------------------------------------------
+; Initiaise the screen by clearing the bitmap screen and attributes. Everything
+; is set to 0 which is why the border colour used in the game is black to save
+; some bytes ;o)
+; -----------------------------------------------------------------------------
 start
                 ld      hl, BITMAP_SCRN_ADDR       
                 ld      de, BITMAP_SCRN_ADDR + 1
@@ -79,11 +86,13 @@ start
                 ld      (hl), l                                     ; L = 0 so use that to clear
                 ldir                                                ; 13 bytes
 
-            ; -----------------------------------------------------------------------------
-            ; Draw playing court
+; -----------------------------------------------------------------------------
+; Draw playing area
+; -----------------------------------------------------------------------------
+drawPlayingArea
                 ld      a, 20                                    
                 ld      hl, ATTR_SCRN_ADDR + (3 * 32) + 1
-drawCourt
+drawRow
                 push    hl
                 pop     de
                 inc     de
@@ -93,38 +102,45 @@ drawCourt
                 ld      c, 3
                 add     hl, bc
                 dec     a  
-                jr      nz, drawCourt                               ; 21 bytes
+                jr      nz, drawRow                                ; 21 bytes
 
-            ; -----------------------------------------------------------------------------
-            ; Draw the win bar 
-                ld      a, (dynamicVariables)
-                cp      0
-                jr      z, mainLoop                
+; -----------------------------------------------------------------------------
+; Draw the progress bar
+; -----------------------------------------------------------------------------
+drawProgress
+                ld      a, (dynamicVariables + DYN_VAR_LEVELS_COMPLETE) ; If the level count == 0...
+                or      a                                               ; ...then don't draw the...
+                jr      z, mainLoop                                     ; ...progress bar
 
-                ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1
-                ld      de, ATTR_SCRN_ADDR + (1 * 32) + 2
-                ld      c, a
-                ld      (hl), GREEN * PAPER + WHITE
-                ldir
+                ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1               ; Point HL to the start of the progress bar       
+drawProgressBlock
+                ld      (hl), GREEN * PAPER + WHITE                     ; Paint the block
+                inc     hl                                              ; Move to the right
+                dec     a                                               ; Dec the level count
+                jr      nz, drawProgressBlock                           ; If we are not at zero go again
 
                 push    hl                              ; Place an initial value on the stack
                                                         ; to be used later when see if the ball has got trapped
+
+; -----------------------------------------------------------------------------
+; Main game loop
+; -----------------------------------------------------------------------------
 mainLoop                                                          
 
             ; -----------------------------------------------------------------------------
             ; Player movement
-                ld      bc, 0xdffe
+                ld      bc, 0xdffe                      ; Read keys YUIOP
                 in      a, (c)
 
-                ld      hl, playerVector
+                ld      hl, playerVector                ; We will use HL in a few places so just load it once here
 
 _checkRight                                             ; Move player right
                 rra
-                jr      c, _checkLeft
-                ld      (hl), 0x01
+                jr      c, _checkLeft                   ; If P was not pressed check O as we don't need to IN again
+                ld      (hl), 0x01                      ; P was pressed so update the balls address by adding 0x01
                 inc     hl
                 ld      (hl), 0x00
-                jr      _movePlayer
+                jr      _movePlayer                     ; Don't check for any more keys
 
 _checkLeft                                              ; Move player left
                 rra
@@ -135,7 +151,7 @@ _checkLeft                                              ; Move player left
                 jr      _movePlayer
 
 _checkUp                                                ; Move player up
-                ld      bc, 0xfbfe
+                ld      bc, 0xfbfe                      ; Read keys QWERT
                 in      a, (c)
                 rra
                 jr      c, _checkDown
@@ -145,7 +161,7 @@ _checkUp                                                ; Move player up
                 jr      _movePlayer
 
 _checkDown                                              ; Move player down
-                inc     b 
+                inc     b                               ; INC B from 0xFB to 0xFD to read ASDFG
                 inc     b
                 in      a, (c)
                 rra
@@ -155,21 +171,21 @@ _checkDown                                              ; Move player down
                 ld      (hl), 0x00
 
 _checkEnter
-                ld      bc, 0xbffe
+                ld      bc, 0xbffe                      ; Read keys HJKLEnter
                 in      a, (c)
                 rra
                 jr      c, _movePlayer
-                jp      init
+                jp      init                            ; Player wants to reset to init the game
 
 _movePlayer
-                ld      hl, (playerAddr)
-                ld      (hl), BORDER_COLOUR
-                ld      de, (playerVector)
-                add     hl, de
-                ld      a, BORDER_COLOUR                            
-                cp      (hl)         
-                jr      z, _drawplayer            
-                ld      (playerAddr), hl
+                ld      hl, (playerAddr)                ; Get the players location address             
+                ld      (hl), BORDER_COLOUR             ; Draw the border colour in the current location 
+                ld      de, (playerVector)              ; Get the players movement vector
+                add     hl, de                          ; Calculate the new player position address
+                ld      a, BORDER_COLOUR                             
+                cp      (hl)                            ; Compare the new location with the border colour...
+                jr      z, _drawplayer                  ; ...and if it is a border block then don't save HL
+                ld      (playerAddr), hl                ; New position is not a border block so save the new position 
                 
             ; -----------------------------------------------------------------------------
             ; Draw player 
@@ -205,15 +221,16 @@ _eraseBall
             ; Has the ball been trapped    
                 pop     de                                      ; Get the previous position 
                 push    hl                                      ; Save the current position 
-                or      1
-                sbc     hl, de
-                jp      z, _trapped
-                ld      hl, dynamicVariables + 1
-                ld      (hl), 0
-                jp      mainLoop
+                or      1                                       ; Clear the carry flag
+                sbc     hl, de                                  ; current pos - previous pos
+                ld      hl, dynamicVariables + DYN_VAR_TRAPPED_COUNT    ; Do this now so we don't have to do it again in the
+                                                                        ; _trapped branch :)
+                jp      z, _trapped                             ; If current pos == previous pos increment the trapped counter...
+                ld      (hl), 0                                 ; ...else reset the trapped counter
+
+                jp      mainLoop                                ; Round we go again :)
 
 _trapped
-                ld      hl, dynamicVariables + 1
                 inc     (hl)
                 ld      a, (hl)
                 cp      2
@@ -254,8 +271,6 @@ _saveBallPos
 ; -----------------------------------------------------------------------------
 ; Variables
 ; -----------------------------------------------------------------------------
-; courtAddr       dw      ATTR_COURT_START
-
 playerAddr      dw      ATTR_SCRN_ADDR + (12 * 32) + 16
 playerVector    dw      UP_CELL
 
@@ -264,6 +279,8 @@ xVector         dw      LEFT_CELL
 yVector         dw      DOWN_CELL
 
 dynamicVariables
+                ; First byte is the Levels the count of levels completed
+                ; Second byte is the # frames the ball has not been able to move
 
                 END init
 
