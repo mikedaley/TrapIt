@@ -217,12 +217,13 @@ _drawBall
 
             ; -----------------------------------------------------------------------------
             ; Sync screen and slow things down to 25 fps
-                halt                                    
+_sync           halt                                    
                 halt
 
             ; -----------------------------------------------------------------------------
             ; Erase ball
 _eraseBall
+                ld      a, BORDER_COLOUR
                 ld      (hl), SCRN_COLOUR                           ; HL is already pointing to the balls location so erase it
 
             ; -----------------------------------------------------------------------------
@@ -269,10 +270,27 @@ updateBallWithVector
                 ld      (hl), e                                     ; Save the new vector back into the vector addr
                 inc     hl  
                 ld      (hl), d 
+
+                call    playClick
     
                 ret                                             
 _saveBallPos        
                 ld      (ballAddr), hl                              ; Save the new position in HL
+                ret
+
+; -----------------------------------------------------------------------------
+; Play click sound effect. Used when the ball hits a black block
+; -----------------------------------------------------------------------------
+playClick       
+                ld      b, 100
+_playClickLoop
+                ld      a, b
+                and     248
+                out     (254), a
+                djnz    _playClickLoop
+                xor     a
+                and     248
+                out     (254), a
                 ret
 
 ; -----------------------------------------------------------------------------
