@@ -50,13 +50,14 @@ PLAYER_COLOUR           equ             RED * PAPER + WHITE + BRIGHT + FLASH
 BALL_COLOUR             equ             YELLOW * PAPER + WHITE
 SCRN_COLOUR             equ             BLUE * PAPER + BLACK
 BORDER_COLOUR           equ             BLACK * PAPER               ; Must be Black on Black as that is what the attr memory is initialised too
+PROGRESS_BAR_COLOUR     equ             GREEN * PAPER
 
 UP_CELL                 equ             0xffe0                      ; - 32
 DOWN_CELL               equ             0x0020                      ; + 32
 LEFT_CELL               equ             0xffff                      ; -1 
 RIGHT_CELL              equ             0x0001                      ; + 1
 
-MAX_TRAPPED_COUNT       equ             0x02                        ; Numer of frames the ball has been unable to move. If the trapped
+MAX_TRAPPED_COUNT       equ             0x03                        ; Numer of frames the ball has been unable to move. If the trapped
                                                                     ; count reaches this number then the ball is trapped and the level ends
 
 DYN_VAR_LEVELS_COMPLETE equ             0x00                        ; Stores the number of consecutive levels completed
@@ -73,24 +74,24 @@ DYN_VAR_TRAPPED_COUNT   equ             0x01                        ; Stores how
 ; -----------------------------------------------------------------------------
 init
                 ld      hl, dynamicVariables + DYN_VAR_LEVELS_COMPLETE
-                ld      (hl), 0                                     ; Reset win count
+                ld      (hl), 0                                     ; Reset level count
                 inc     hl
                 ld      (hl), 0                                     ; Reset trap count
-
-                ld      a, 0
-                out     (254), a
 
 ; -----------------------------------------------------------------------------
 ; Initiaise the screen by clearing the bitmap screen and attributes. Everything
 ; is set to 0 which is why the border colour used in the game is black to save
 ; some bytes ;o)
 ; -----------------------------------------------------------------------------
-start
-                ld      hl, BITMAP_SCRN_ADDR       
-                ld      de, BITMAP_SCRN_ADDR + 1
-                ld      bc, BITMAP_SCRN_SIZE + ATTR_SCRN_SIZE       ; Bitmap screen size + attributes size
-                ld      (hl), l                                     ; L = 0 so use that to clear
-                ldir                                                ; 13 bytes
+startGame
+                ld      hl, BITMAP_SCRN_ADDR                        ; Point HL at the start of the bitmap file. This approach saves
+                                                                    ; 1 byte over using LDIR
+clearLoop 
+                ld      (hl), BORDER_COLOUR                         ; Reset contents of addr in HL to 0
+                inc     hl                                          ; Move to the next address
+                ld      a, 0x5b                                     ; Have we reached 0x5b00
+                cp      h                                           
+                jr      nz, clearLoop                               ; It not then loop
 
 ; -----------------------------------------------------------------------------
 ; Draw playing area
@@ -113,14 +114,14 @@ drawRow
 ; -----------------------------------------------------------------------------
 ; Draw the progress bar
 ; -----------------------------------------------------------------------------
-drawProgress
+drawProgressBar
                 ld      a, (dynamicVariables + DYN_VAR_LEVELS_COMPLETE) ; If the level count == 0...
                 or      a                                           ; ...then don't draw the...
                 jr      z, mainLoop                                 ; ...progress bar
 
                 ld      hl, ATTR_SCRN_ADDR + (1 * 32) + 1           ; Point HL to the start of the progress bar       
 drawProgressBlock
-                ld      (hl), GREEN * PAPER + WHITE                 ; Paint the block
+                ld      (hl), PROGRESS_BAR_COLOUR                   ; Paint the block
                 inc     hl                                          ; Move to the right
                 dec     a                                           ; Dec the level count
                 jr      nz, drawProgressBlock                       ; If we are not at zero go again
@@ -132,17 +133,16 @@ drawProgressBlock
 ; Main game loop
 ; -----------------------------------------------------------------------------
 mainLoop                                                          
-
             ; -----------------------------------------------------------------------------
-            ; Read the keyboard and update the players direction vector
-                ld      bc, 0xdffe                                  ; Read keys YUIOP
-                in      a, (c)          
-            
+            ; Read the keyboard and update the players direction vector            
                 ld      hl, playerVector                            ; We will use HL in a few places so just load it once here
+                ld      c, 0xfe                                     ; Set up the port for the keyboard as this wont change
             
 _checkRight                                                         ; Move player right
+                ld      b, 0xdf                                     ; Read keys YUIOP by setting B only as C is already set
+                in      a, (c)          
                 rra         
-                jr      c, _checkLeft                               ; If P was not pressed check O as we don't need to IN again
+                jr      c, _checkLeft                               ; If P was not pressed check O
                 ld      (hl), 0x01                                  ; P pressed so set the player vector to 0x0001
                 inc     hl          
                 ld      (hl), 0x00          
@@ -154,18 +154,18 @@ _checkLeft                                                          ; Move playe
                 ld      (hl), 0xff                                  ; O pressed so set the player vector to 0xffff
                 inc     hl          
                 ld      (hl), 0xff          
-                jr      _movePlayer         
+                inc     c                                           ; Break the next IN so no keys will be read rather than doing
+                                                                    ; JR which saves 1 byte
             
 _checkUp                                                            ; Move player up
-                ld      bc, 0xfbfe                                  ; Read keys QWERT
+                ld      b, 0xfb                                     ; Read keys QWERT
                 in      a, (c)          
                 rra         
                 jr      c, _checkDown           
                 ld      (hl), 0xe0                                  ; Q pressed so set the player vector to 0xfffe
                 inc     hl          
                 ld      (hl), 0xff          
-                jr      _movePlayer         
-            
+
 _checkDown                                                          ; Move player down
                 inc     b                                           ; INC B from 0xFB to 0xFD to read ASDFG
                 inc     b           
@@ -177,7 +177,7 @@ _checkDown                                                          ; Move playe
                 ld      (hl), 0x00          
             
 _checkEnter         
-                ld      bc, 0xbffe                                  ; Read keys HJKLEnter
+                ld      b, 0xbf                                     ; Read keys HJKLEnter
                 in      a, (c)          
                 rra         
                 jr      c, _movePlayer          
@@ -190,10 +190,10 @@ _movePlayer
                 ld      (hl), BORDER_COLOUR                         ; Draw the border colour in the current location 
                 ld      de, (playerVector)                          ; Get the players movement vector
                 add     hl, de                                      ; Calculate the new player position address
-                ld      a, BORDER_COLOUR                                         
+                xor     a                                           ; Clear A to 0 which happens to be the BORDER_COLOUR saving 1 byte :o)
                 cp      (hl)                                        ; Compare the new location with the border colour...
                 jr      z, _drawplayer                              ; ...and if it is a border block then don't save HL
-                ld      (playerAddr), hl                            ; New position is not a border block so save the new position 
+                ld      (playerAddr), hl                            ; New position is not a border block so save it
                 
             ; -----------------------------------------------------------------------------
             ; Draw player 
@@ -226,14 +226,13 @@ _sync           halt
             ; -----------------------------------------------------------------------------
             ; Erase ball
 _eraseBall
-                ld      a, BORDER_COLOUR
                 ld      (hl), SCRN_COLOUR                           ; HL is already pointing to the balls location so erase it
 
             ; -----------------------------------------------------------------------------
             ; Has the ball been trapped    
                 pop     de                                          ; Get the previous position 
                 push    hl                                          ; Save the current position 
-                or      1                                           ; Clear the carry flag
+                or      a                                           ; Clear the carry flag
                 sbc     hl, de                                      ; current pos - previous pos
                 ld      hl, dynamicVariables + DYN_VAR_TRAPPED_COUNT; Do this now so we don't have to do it again in the
                                                                     ; _trapped branch :)
@@ -245,13 +244,13 @@ _eraseBall
 _trapped
                 inc     (hl)                                        ; Up the trapped count
                 ld      a, (hl)                                     ; Check to see if the trapped count...
-                cp      2                                           ; ... is equal to 2
+                cp      MAX_TRAPPED_COUNT                           ; ... is equal to 2
                 jp      nz, mainLoop
 
                 dec     hl                                          ; Point HL at the level pointer address
                 inc     (hl)                                        ; Inc the level complete counter
 
-                jp      start                                       ; Loop
+                jp      startGame                                   ; Loop
 
 ; -----------------------------------------------------------------------------
 ; Update the balls position based on the vector provided
@@ -266,7 +265,7 @@ updateBallWithVector
                 jr      nz, _saveBallPos                            ; ...the new position is a border block and is not save the new pos
     
                 ld      hl, 0                                       ; The new position was a border block...
-                or      1
+                or      a
                 sbc     hl, bc                                      ; ...so NEG the vector in BC
                     
                 ex      de, hl                                      ; Need to save the new vector so switch DE and HL
@@ -276,15 +275,11 @@ updateBallWithVector
                 ld      (hl), d 
     
 _playClickLoop
-                ld      a, b
-                and     248
-                out     (254), a
+                ld      a, b                                        ; Not setting B for this loop saves us 2 bytes and woks fine :o)
+                and     248                                         ; Make sure the border colour doesn't change
+                out     (254), a                                    ; Push A to the port to get our high def 1 bit sond :oO
                 djnz    _playClickLoop
-                xor     a
-                and     248
-                out     (254), a
-
-                ret                                             
+                ret
 
 _saveBallPos        
                 ld      (ballAddr), hl                              ; Save the new position in HL
