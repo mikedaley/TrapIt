@@ -2,7 +2,7 @@
 ; Name:     TRAPIT
 ; Author:   Mike Daley
 ; Started:  12th May 2016
-; Finished: 
+; Finished: 19th May 2016
 ;
 ; The idea of the game is to move the red player square around the screen leaving a
 ; trail of black squares. The player and the ball are unable to move through black
@@ -21,7 +21,7 @@
 ;
 ; This game is very easy to play but hard to master :o)
 ;
-; This is an entry for the 256 byte game challenge on the Z80 Assembly programming
+; This is an entry for the 256 bytes game competition #6 on the Z80 Assembly programming
 ; on the ZX Spectrum Facebook Group https://www.facebook.com/groups/z80asm/
 ; -----------------------------------------------------------------------------
 
@@ -154,7 +154,7 @@ _checkLeft                                                          ; Move playe
                 ld      (hl), 0xff                                  ; O pressed so set the player vector to 0xffff
                 inc     hl          
                 ld      (hl), 0xff          
-                inc     c                                           ; Break the next IN so no keys will be read rather than doing
+                inc     c                                           ; Break the next IN so _checkUp will jump to _checkDown so we not need
                                                                     ; JR which saves 1 byte
             
 _checkUp                                                            ; Move player up
@@ -165,6 +165,7 @@ _checkUp                                                            ; Move playe
                 ld      (hl), 0xe0                                  ; Q pressed so set the player vector to 0xfffe
                 inc     hl          
                 ld      (hl), 0xff          
+                inc     b                                           ; Break the next IN so _checkEnter will be called
 
 _checkDown                                                          ; Move player down
                 inc     b                                           ; INC B from 0xFB to 0xFD to read ASDFG
@@ -175,7 +176,7 @@ _checkDown                                                          ; Move playe
                 ld      (hl), 0x20                                  ; A pressed so set the player vectory to 0x0020
                 inc     hl          
                 ld      (hl), 0x00          
-            
+
 _checkEnter         
                 ld      b, 0xbf                                     ; Read keys HJKLEnter
                 in      a, (c)          
